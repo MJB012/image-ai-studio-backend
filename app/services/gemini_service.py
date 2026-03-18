@@ -53,10 +53,8 @@ async def generate_image(
         response = await client.post(
             url,
             json=payload,
-            headers={
-                "x-goog-api-key": settings.GEMINI_API_KEY,
-                "Content-Type": "application/json",
-            },
+            params={"key": settings.GEMINI_API_KEY},
+            headers={"Content-Type": "application/json"},
         )
 
     if response.status_code != 200:
