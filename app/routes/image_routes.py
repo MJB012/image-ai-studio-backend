@@ -8,7 +8,7 @@ from app.schemas.image_schema import (
     ImageResponse,
     ImageListResponse,
 )
-from app.services.gemini_service import generate_image
+from app.services.gemini_service import generate_image, RateLimitedError
 from app.services.cloudinary_service import upload_image, delete_image as delete_cloudinary_image
 from app.services.image_service import (
     save_image,
@@ -44,6 +44,22 @@ async def generate(
             prompt=request.prompt,
             reference_image_b64=request.reference_image,
             aspect_ratio=request.aspect_ratio,
+        )
+    except RateLimitedError as e:
+        logger.warning(
+            "Gemini rate-limit hit for user %s (retry_after=%ss)",
+            current_user["_id"],
+            e.retry_after_seconds,
+        )
+        headers = (
+            {"Retry-After": str(e.retry_after_seconds)}
+            if e.retry_after_seconds is not None
+            else None
+        )
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=str(e),
+            headers=headers,
         )
     except ValueError as e:
         logger.error(f"Image generation failed for user {current_user['_id']}: {e}")

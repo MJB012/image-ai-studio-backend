@@ -1,4 +1,5 @@
 import base64
+import re
 import httpx
 import logging
 from app.config import settings
@@ -7,6 +8,43 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 DEFAULT_MODEL = "gemini-2.5-flash-image"
+
+
+class RateLimitedError(Exception):
+    """Raised when the upstream Gemini API returns HTTP 429.
+
+    `retry_after_seconds` is best-effort — parsed from the Retry-After header
+    or Google's `google.rpc.RetryInfo` detail in the error body. May be None
+    if the API didn't tell us when to try again.
+    """
+
+    def __init__(self, message: str, retry_after_seconds: int | None = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+def _parse_retry_after(response: httpx.Response) -> int | None:
+    """Pull a retry-after hint from the Retry-After header or the
+    google.rpc.RetryInfo entry in `error.details`. Returns whole seconds."""
+    header_val = response.headers.get("Retry-After")
+    if header_val:
+        try:
+            return int(float(header_val))
+        except ValueError:
+            pass  # HTTP-date format — ignore, fall through to body parse
+
+    try:
+        body = response.json()
+        for detail in body.get("error", {}).get("details", []) or []:
+            delay = detail.get("retryDelay")  # e.g. "30s", "1.5s"
+            if isinstance(delay, str):
+                m = re.match(r"^(\d+(?:\.\d+)?)s?$", delay)
+                if m:
+                    return max(1, int(float(m.group(1))))
+    except Exception:  # noqa: BLE001 — best-effort parse, never let this raise
+        pass
+
+    return None
 
 
 async def generate_image(
@@ -55,6 +93,18 @@ async def generate_image(
             json=payload,
             params={"key": settings.GEMINI_API_KEY},
             headers={"Content-Type": "application/json"},
+        )
+
+    if response.status_code == 429:
+        retry_after = _parse_retry_after(response)
+        logger.warning(
+            "Gemini API rate-limited (429): retry_after=%ss body=%s",
+            retry_after,
+            response.text[:300],
+        )
+        raise RateLimitedError(
+            "Image generation is rate-limited right now. Please try again in a moment.",
+            retry_after_seconds=retry_after,
         )
 
     if response.status_code != 200:
