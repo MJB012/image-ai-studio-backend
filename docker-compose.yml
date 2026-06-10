@@ -1,0 +1,49 @@
+# Docker Compose v2 (no `version:` key needed for Docker 25+).
+# Run:    docker compose up -d --build
+# Logs:   docker compose logs -f backend
+# Stop:   docker compose down
+
+services:
+  backend:
+    build: .
+    image: image-ai-studio-backend:latest
+    container_name: image-ai-studio-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    healthcheck:
+      # The app exposes GET / which returns a JSON status message.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; urllib.request.urlopen('http://localhost:8000/').read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # If you enable the local `mongo` service below, also change MONGO_URL in .env to:
+    #   mongodb://mongo:27017/image_ai_studio
+    # and uncomment depends_on:
+    # depends_on:
+    #   mongo:
+    #     condition: service_healthy
+
+  # ----- Optional local MongoDB -----
+  # Leave commented if you use MongoDB Atlas (or any external MONGO_URL).
+  # Uncomment this block (and the depends_on above) to run a local Mongo in the same network.
+  #
+  # mongo:
+  #   image: mongo:7
+  #   container_name: image-ai-studio-mongo
+  #   restart: unless-stopped
+  #   ports:
+  #     - "27017:27017"
+  #   volumes:
+  #     - mongo_data:/data/db
+  #   healthcheck:
+  #     test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 })"]
+  #     interval: 30s
+  #     timeout: 5s
+  #     retries: 5
+
+# volumes:
+#   mongo_data:

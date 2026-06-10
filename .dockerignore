@@ -1,0 +1,21 @@
+# Keep the image small and avoid leaking local state into the build context.
+.git
+.gitignore
+.env
+.env.*
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.DS_Store
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md
+*.log
+*.md
